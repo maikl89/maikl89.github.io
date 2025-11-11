@@ -21,8 +21,8 @@ import { Ruler } from '../ui/components/Ruler.js'
 import { CollectionPanel } from '../ui/panels/CollectionPanel.js'
 import { ProjectsPanel } from '../ui/panels/ProjectsPanel.js'
 import { PropertiesPanel } from '../ui/panels/PropertiesPanel.js'
-import { TimelinePanel } from '../ui/panels/TimelinePanel.js'
 import { SettingsPanel } from '../ui/panels/SettingsPanel.js'
+import { TimelinePanel } from '../ui/panels/TimelinePanel.js'
 import { round } from '../utils/math.js'
 import DEFAULT_CONFIG, { createConfig } from './config.js'
 
@@ -39,7 +39,9 @@ export default class App {
     })
     this.isUploadingProject = false
 
-    this.baseControls = JSON.parse(JSON.stringify(DEFAULT_CONFIG.controls || {}))
+    this.baseControls = JSON.parse(
+      JSON.stringify(DEFAULT_CONFIG.controls || {})
+    )
     this.controlScale = 1
     this.config.controls = { ...this.baseControls }
 
@@ -83,6 +85,7 @@ export default class App {
     this.stageRoot = null
 
     this.selectedObject = null
+    this.activeHandle = null // Track active control point being dragged
 
     // Overlay image state
     this.overlayImage = {
@@ -307,14 +310,13 @@ export default class App {
     const svgContainer = this.svgRenderer.container
     const { clientWidth, clientHeight } = svgContainer
 
+    const scale = DEFAULT_CONFIG.stage.height / DEFAULT_CONFIG.stage.width
     const width = round(clientWidth, 3)
-    const height = round(
-      clientWidth * (DEFAULT_CONFIG.stage.height / DEFAULT_CONFIG.stage.width),
-      3
-    )
+    const height = round(clientWidth * scale, 3)
 
-    this.stageRoot.style.width = `${width}px`
-    this.stageRoot.style.height = `${height + 20}px` // 20 is rulers height
+    const w = this.stageRoot.clientWidth - 20
+    this.stageRoot.style.height = `${round(w * scale, 3) + 20}px`
+    this.stageRoot.style.minHeight = `${round(w * scale, 3) + 20}px`
 
     this.svgRenderer.resize(width, height)
     this.canvasRenderer.resize(width, height)
@@ -354,34 +356,36 @@ export default class App {
       label,
       nodes: [
         {
-          x: 0,
-          y: -60,
-          start: { x: -20, y: -80 },
-          end: { x: 20, y: -80 }
+          x: 50,
+          y: 50,
+          start: { x: 10, y: 40 },
+          end: { x: 40, y: 10 }
         },
         {
-          x: 60,
-          y: 60,
-          start: { x: 80, y: 40 },
-          end: { x: 80, y: 80 }
+          x: 300,
+          y: 50,
+          start: { x: 340, y: 40 },
+          end: { x: 340, y: 80 }
         },
         {
-          x: -60,
-          y: 60,
-          start: { x: -80, y: 80 },
-          end: { x: -80, y: 40 }
+          x: 50,
+          y: 300,
+          start: { x: 90, y: 340 },
+          end: { x: 50, y: 340 }
         }
       ],
       svg_element: 'path',
       stroke: '#3b82f6',
       strokeWidth: 2,
       fill: '#ffffff',
-      opacity: 0.7,
+      opacity: 0.5,
       offset: { x: 0, y: 0, z: 0 },
       rotate: { x: 0, y: 0, z: 0 },
       closed: true
     }
     const created = this.collectionManager.add(obj)
+    this.interactionManager.reset() // important for mobile touch only
+    this.activeHandle = null
     this._selectObject(created)
   }
 
@@ -555,7 +559,9 @@ export default class App {
       return
     }
 
-    const refreshed = this.collectionManager.findInGroups(this.selectedObject.id)
+    const refreshed = this.collectionManager.findInGroups(
+      this.selectedObject.id
+    )
     if (refreshed) {
       this._selectObject(refreshed)
     } else {
@@ -629,7 +635,7 @@ export default class App {
   }
 
   _updateControlScale(value) {
-    const scale = Math.min(3, Math.max(0.5, Number(value) || 1))
+    const scale = Math.min(6, Math.max(0.5, Number(value) || 1))
     this.controlScale = scale
 
     const scaledControls = {}
@@ -785,9 +791,7 @@ export default class App {
         } else {
           this._updateOverlayPosition(axis, 0)
         }
-        event.target.value = String(
-          this.overlayImage.position?.[axis] || 0
-        )
+        event.target.value = String(this.overlayImage.position?.[axis] || 0)
       })
 
       wrapper.appendChild(label)
@@ -1040,6 +1044,13 @@ export default class App {
       return
     }
 
+    if (event.type === 'active-handle') {
+      // Update active handle state for visual feedback
+      this.activeHandle = event.handle
+      this.renderScene()
+      return
+    }
+
     if (event.type === 'drag-end') {
       this.collectionManager.save()
       return
@@ -1161,7 +1172,8 @@ export default class App {
     const scene = {
       objects: this.collectionManager.getAll(),
       camera: this.camera.getState(),
-      selectedId: this.selectedObject?.id || null
+      selectedId: this.selectedObject?.id || null,
+      activeHandle: this.activeHandle
     }
 
     this.svgRenderer.requestRender(scene)

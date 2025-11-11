@@ -115,6 +115,11 @@ export class InteractionManager {
         index: parseInt(target.getAttribute('data-index') || '0', 10),
         objectId: target.getAttribute('data-object-id')
       }
+      // Notify about active handle for visual feedback
+      this.onUpdate({
+        type: 'active-handle',
+        handle: this.dragHandle
+      })
       shouldPreventDefault = true
       if (shouldPreventDefault) {
         event.preventDefault()
@@ -133,6 +138,11 @@ export class InteractionManager {
           index: parseInt(target.getAttribute('data-index') || '0', 10),
           objectId: objectId
         }
+        // Notify about active handle for visual feedback
+        this.onUpdate({
+          type: 'active-handle',
+          handle: this.dragHandle
+        })
       }
 
       // Always select the object when interacting with it
@@ -200,7 +210,15 @@ export class InteractionManager {
   }
 
   _onTouchEnd(e) {
-    this._handlePointerUp(e)
+    // handle specially for touch events
+    if (this.isDragging) {
+      // this.isDragging = false
+      // this.dragHandle = null
+      // this.activePointerType = null
+      this.onUpdate({
+        type: 'drag-end'
+      })
+    }
   }
 
   _handlePointerUp(e) {
@@ -277,6 +295,12 @@ export class InteractionManager {
       y: svgDy / cameraScale,
       z: 0
     }
+  }
+
+  reset() {
+    this.isDragging = false
+    this.dragHandle = null
+    this.activePointerType = null
   }
 
   destroy() {

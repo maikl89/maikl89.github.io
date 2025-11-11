@@ -163,6 +163,7 @@ export class SVGRenderer extends RenderEngine {
     }
     
     const selectedId = scene?.selectedId || null
+    const activeHandle = scene?.activeHandle || null
 
     scene.objects.forEach(obj => {
       const group = this._renderObject(obj, scene.camera, selectedId && obj.id === selectedId, selectedId)
@@ -172,7 +173,7 @@ export class SVGRenderer extends RenderEngine {
 
       // Render controls for selected object (top-level only, nested objects handled below)
       if (this.showControls && selectedId && obj.id === selectedId) {
-        const controls = this._renderControls(obj, scene.camera)
+        const controls = this._renderControls(obj, scene.camera, null, activeHandle)
         if (controls) {
           this.controlsLayer.appendChild(controls)
         }
@@ -188,7 +189,7 @@ export class SVGRenderer extends RenderEngine {
         if (!isTopLevel) {
           // Calculate accumulated transform for nested object
           const accumulatedTransform = this._calculateAccumulatedTransform(scene.objects, selectedId, scene.camera)
-          const controls = this._renderControls(selectedObj, scene.camera, accumulatedTransform)
+          const controls = this._renderControls(selectedObj, scene.camera, accumulatedTransform, activeHandle)
           if (controls) {
             this.controlsLayer.appendChild(controls)
           }
@@ -528,14 +529,33 @@ export class SVGRenderer extends RenderEngine {
   }
 
   /**
+   * Check if a handle matches the active handle.
+   * @param {string} handleType - Type of handle ('start', 'end', 'anchor', 'origin')
+   * @param {number} handleIndex - Index of the handle
+   * @param {string} objectId - ID of the object
+   * @param {object|null} activeHandle - Active handle to compare against
+   * @returns {boolean} True if handle is active
+   * @private
+   */
+  _isHandleActive(handleType, handleIndex, objectId, activeHandle) {
+    if (!activeHandle) return false
+    return (
+      activeHandle.type === handleType &&
+      activeHandle.index === handleIndex &&
+      String(activeHandle.objectId) === String(objectId)
+    )
+  }
+
+  /**
    * Render control handles for an object.
    * @param {object} obj - Object to render controls for
    * @param {object} camera - Camera transform
    * @param {object|null} accumulatedTransform - Optional accumulated transform for nested objects
+   * @param {object|null} activeHandle - Optional active handle being dragged { type, index, objectId }
    * @returns {SVGGElement|null} Controls group element
    * @private
    */
-  _renderControls(obj, camera = { x: 0, y: 0, z: 200 }, accumulatedTransform = null) {
+  _renderControls(obj, camera = { x: 0, y: 0, z: 200 }, accumulatedTransform = null, activeHandle = null) {
     // Calculate zoom scale for fixed-size controls
     const zoomScale = this._getZoomScale()
     const controls = this.controlsConfig || DEFAULT_CONFIG.controls || {}
@@ -599,14 +619,15 @@ export class SVGRenderer extends RenderEngine {
       const centerX = (bounds.minX + bounds.maxX) / 2
       const centerY = (bounds.minY + bounds.maxY) / 2
 
+      const isOriginActive = this._isHandleActive('origin', 0, obj.id, activeHandle)
       const originHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
       originHandle.setAttribute('cx', centerX)
       originHandle.setAttribute('cy', centerY)
-      originHandle.setAttribute('r', originRadius)
-      originHandle.setAttribute('fill', '#8b5cf6')
-      originHandle.setAttribute('stroke', '#7c3aed')
-      originHandle.setAttribute('stroke-width', originStrokeWidth)
-      originHandle.setAttribute('class', 'handle origin-handle')
+      originHandle.setAttribute('r', isOriginActive ? originRadius * 1.5 : originRadius)
+      originHandle.setAttribute('fill', isOriginActive ? '#7c3aed' : '#8b5cf6')
+      originHandle.setAttribute('stroke', isOriginActive ? '#6d28d9' : '#7c3aed')
+      originHandle.setAttribute('stroke-width', isOriginActive ? originStrokeWidth * 1.5 : originStrokeWidth)
+      originHandle.setAttribute('class', `handle origin-handle ${isOriginActive ? 'handle-active' : ''}`)
       originHandle.setAttribute('data-type', 'origin')
       originHandle.setAttribute('data-index', '0')
       originHandle.setAttribute('data-object-id', String(obj.id))
@@ -679,14 +700,15 @@ export class SVGRenderer extends RenderEngine {
       controlsGroup.appendChild(endLine)
 
       // Start control handle
+      const isStartActive = this._isHandleActive('start', i, obj.id, activeHandle)
       const startHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
       startHandle.setAttribute('cx', tNode.start.x)
       startHandle.setAttribute('cy', tNode.start.y)
-      startHandle.setAttribute('r', handleRadius)
-      startHandle.setAttribute('fill', '#60a5fa')
-      startHandle.setAttribute('stroke', '#3b82f6')
-      startHandle.setAttribute('stroke-width', handleStrokeWidth)
-      startHandle.setAttribute('class', 'handle handle-start')
+      startHandle.setAttribute('r', isStartActive ? handleRadius * 1.5 : handleRadius)
+      startHandle.setAttribute('fill', isStartActive ? '#3b82f6' : '#60a5fa')
+      startHandle.setAttribute('stroke', isStartActive ? '#1d4ed8' : '#3b82f6')
+      startHandle.setAttribute('stroke-width', isStartActive ? handleStrokeWidth * 1.5 : handleStrokeWidth)
+      startHandle.setAttribute('class', `handle handle-start ${isStartActive ? 'handle-active' : ''}`)
       startHandle.setAttribute('data-type', 'start')
       startHandle.setAttribute('data-index', String(i))
       startHandle.setAttribute('data-object-id', String(obj.id))
@@ -694,14 +716,15 @@ export class SVGRenderer extends RenderEngine {
       controlsGroup.appendChild(startHandle)
 
       // End control handle
+      const isEndActive = this._isHandleActive('end', i, obj.id, activeHandle)
       const endHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
       endHandle.setAttribute('cx', tNode.end.x)
       endHandle.setAttribute('cy', tNode.end.y)
-      endHandle.setAttribute('r', handleRadius)
-      endHandle.setAttribute('fill', '#60a5fa')
-      endHandle.setAttribute('stroke', '#3b82f6')
-      endHandle.setAttribute('stroke-width', handleStrokeWidth)
-      endHandle.setAttribute('class', 'handle handle-end')
+      endHandle.setAttribute('r', isEndActive ? handleRadius * 1.5 : handleRadius)
+      endHandle.setAttribute('fill', isEndActive ? '#3b82f6' : '#60a5fa')
+      endHandle.setAttribute('stroke', isEndActive ? '#1d4ed8' : '#3b82f6')
+      endHandle.setAttribute('stroke-width', isEndActive ? handleStrokeWidth * 1.5 : handleStrokeWidth)
+      endHandle.setAttribute('class', `handle handle-end ${isEndActive ? 'handle-active' : ''}`)
       endHandle.setAttribute('data-type', 'end')
       endHandle.setAttribute('data-index', String(i))
       endHandle.setAttribute('data-object-id', String(obj.id))
@@ -709,14 +732,15 @@ export class SVGRenderer extends RenderEngine {
       controlsGroup.appendChild(endHandle)
 
       // Anchor point handle
+      const isAnchorActive = this._isHandleActive('anchor', i, obj.id, activeHandle)
       const anchorHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
       anchorHandle.setAttribute('cx', tNode.point.x)
       anchorHandle.setAttribute('cy', tNode.point.y)
-      anchorHandle.setAttribute('r', handleRadius)
-      anchorHandle.setAttribute('fill', '#fbbf24')
-      anchorHandle.setAttribute('stroke', '#f59e0b')
-      anchorHandle.setAttribute('stroke-width', handleStrokeWidth)
-      anchorHandle.setAttribute('class', 'handle anchor-point')
+      anchorHandle.setAttribute('r', isAnchorActive ? handleRadius * 1.5 : handleRadius)
+      anchorHandle.setAttribute('fill', isAnchorActive ? '#f59e0b' : '#fbbf24')
+      anchorHandle.setAttribute('stroke', isAnchorActive ? '#d97706' : '#f59e0b')
+      anchorHandle.setAttribute('stroke-width', isAnchorActive ? handleStrokeWidth * 1.5 : handleStrokeWidth)
+      anchorHandle.setAttribute('class', `handle anchor-point ${isAnchorActive ? 'handle-active' : ''}`)
       anchorHandle.setAttribute('data-type', 'anchor')
       anchorHandle.setAttribute('data-index', String(i))
       anchorHandle.setAttribute('data-object-id', String(obj.id))
@@ -744,14 +768,16 @@ export class SVGRenderer extends RenderEngine {
     cx /= transformedNodes.length
     cy /= transformedNodes.length
 
+    // Check if origin handle is active (for regular objects, index is 0)
+    const isOriginActive = this._isHandleActive('origin', 0, obj.id, activeHandle)
     const originHandle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
     originHandle.setAttribute('cx', cx)
     originHandle.setAttribute('cy', cy)
-    originHandle.setAttribute('r', originRadius)
-    originHandle.setAttribute('fill', '#8b5cf6')
-    originHandle.setAttribute('stroke', '#7c3aed')
-    originHandle.setAttribute('stroke-width', originStrokeWidth)
-    originHandle.setAttribute('class', 'handle origin-handle')
+    originHandle.setAttribute('r', isOriginActive ? originRadius * 1.5 : originRadius)
+    originHandle.setAttribute('fill', isOriginActive ? '#7c3aed' : '#8b5cf6')
+    originHandle.setAttribute('stroke', isOriginActive ? '#6d28d9' : '#7c3aed')
+    originHandle.setAttribute('stroke-width', isOriginActive ? originStrokeWidth * 1.5 : originStrokeWidth)
+    originHandle.setAttribute('class', `handle origin-handle ${isOriginActive ? 'handle-active' : ''}`)
     originHandle.setAttribute('data-type', 'origin')
     originHandle.setAttribute('data-index', '0')
     originHandle.setAttribute('data-object-id', String(obj.id))

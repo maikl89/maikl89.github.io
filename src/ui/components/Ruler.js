@@ -101,7 +101,6 @@ export class Ruler {
    * @private
    */
   _renderHorizontal(width) {
-    console.log(width)
     // Calculate scale based on zoom
     const zoom = this.camera.z || 200
     const scale = 200 / zoom
@@ -127,9 +126,18 @@ export class Ruler {
     bg.setAttribute('width', width)
     bg.setAttribute('height', this.size)
     bg.setAttribute('fill', 'var(--glass-bg, rgba(13, 18, 28, 0.82))')
-    bg.setAttribute('stroke', 'var(--glass-border, rgba(82, 93, 149, 0.22))')
-    bg.setAttribute('stroke-width', '1')
+    // bg.setAttribute('stroke', 'var(--glass-border, rgba(82, 93, 149, 0.22))')
+    // bg.setAttribute('stroke-width', '1')
     this.element.appendChild(bg)
+
+    const border = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+    border.setAttribute('x1', '0')
+    border.setAttribute('y1', this.size)
+    border.setAttribute('x2', width)
+    border.setAttribute('y2', this.size)
+    border.setAttribute('stroke', 'var(--text-secondary, rgba(203, 213, 225, 0.75))')
+    border.setAttribute('stroke-width', '1')
+    this.element.appendChild(border)
     
     // Draw tick marks and labels
     const start = Math.floor(viewBoxLeft / step) * step
@@ -216,6 +224,15 @@ export class Ruler {
     bg.setAttribute('stroke-width', '1')
     this.element.appendChild(bg)
     
+    const border = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+    border.setAttribute('x1', this.size)
+    border.setAttribute('y1', 0)
+    border.setAttribute('x2', this.size)
+    border.setAttribute('y2', height)
+    border.setAttribute('stroke', 'var(--text-secondary, rgba(203, 213, 225, 0.75))')
+    border.setAttribute('stroke-width', '1')
+    this.element.appendChild(border)
+
     // Draw tick marks and labels
     const start = Math.floor(viewBoxTop / step) * step
     const end = Math.ceil(viewBoxBottom / step) * step

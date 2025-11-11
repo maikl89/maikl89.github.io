@@ -35,7 +35,7 @@ export class SettingsPanel {
     this.scaleSlider = document.createElement('input')
     this.scaleSlider.type = 'range'
     this.scaleSlider.min = '0.5'
-    this.scaleSlider.max = '3'
+    this.scaleSlider.max = '6'
     this.scaleSlider.step = '0.1'
     this.scaleSlider.value = String(this.controlScale)
     this.scaleSlider.style.flex = '1'
@@ -47,7 +47,7 @@ export class SettingsPanel {
     this.scaleInput = document.createElement('input')
     this.scaleInput.type = 'number'
     this.scaleInput.min = '0.5'
-    this.scaleInput.max = '3'
+    this.scaleInput.max = '6'
     this.scaleInput.step = '0.1'
     this.scaleInput.value = String(this.controlScale)
     this.scaleInput.style.width = '64px'
@@ -104,7 +104,7 @@ export class SettingsPanel {
     if (Number.isNaN(value) || !Number.isFinite(value)) {
       return 1
     }
-    return Math.min(3, Math.max(0.5, value))
+    return Math.min(6, Math.max(0.5, value))
   }
 }
 
