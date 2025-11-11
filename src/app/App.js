@@ -36,7 +36,7 @@ export default class App {
       databaseUrl: firebaseConfig.databaseUrl,
       authToken: firebaseConfig.authToken
     })
-    // this.isUploadingProject = false
+    this.isUploadingProject = false
 
     // would be enabled later
     // this.inferenceClient = new InferenceClient({
@@ -149,6 +149,7 @@ export default class App {
         this._selectObject(null)
       },
       onUploadProject: () => this._uploadCurrentProject(),
+      onImportFirebaseConfig: (config) => this._applyFirebaseConfig(config),
       canUpload: this.firebaseClient?.isConfigured(),
       isUploading: this.isUploadingProject
     })
@@ -535,6 +536,34 @@ export default class App {
     link.click()
     link.remove()
     URL.revokeObjectURL(url)
+  }
+
+  _applyFirebaseConfig(config) {
+    const databaseUrl =
+      typeof config?.databaseUrl === 'string' ? config.databaseUrl.trim() : ''
+
+    if (!databaseUrl) {
+      window.alert?.('Firebase config is missing a valid "databaseUrl".')
+      return
+    }
+
+    this.config.firebase = {
+      ...this.config.firebase,
+      databaseUrl
+    }
+
+    this.firebaseClient = new FirebaseClient({
+      databaseUrl,
+      authToken: this.config.firebase.authToken
+    })
+
+    const canUpload = this.firebaseClient.isConfigured()
+    this.projectsPanel?.setUploadOptions({
+      canUpload,
+      isUploading: this.isUploadingProject
+    })
+
+    window.alert?.('Firebase configuration updated.')
   }
 
   async _uploadCurrentProject() {

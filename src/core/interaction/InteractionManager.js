@@ -11,6 +11,7 @@ export class InteractionManager {
     this.onUpdate = onUpdate
 
     this.isDragging = false
+    this.activePointerType = null
     this.dragHandle = null // { type: 'origin'|'anchor'|'start'|'end', index: number, objectId: string }
     this.lastX = 0
     this.lastY = 0
@@ -22,12 +23,17 @@ export class InteractionManager {
 
     this.camera = { x: 0, y: 0, z: 200 }
     this.rotation = { x: 0, y: 0, z: 0 }
+    this._originalTouchAction = null
 
     this._boundHandlers = {
       mousedown: this._onMouseDown.bind(this),
       mousemove: this._onMouseMove.bind(this),
       mouseup: this._onMouseUp.bind(this),
-      mouseleave: this._onMouseUp.bind(this)
+      mouseleave: this._onMouseUp.bind(this),
+      touchstart: this._onTouchStart.bind(this),
+      touchmove: this._onTouchMove.bind(this),
+      touchend: this._onTouchEnd.bind(this),
+      touchcancel: this._onTouchEnd.bind(this)
     }
 
     this._attachListeners()
@@ -35,6 +41,11 @@ export class InteractionManager {
 
   _attachListeners() {
     if (!this.container) return
+
+    if (this.container instanceof HTMLElement) {
+      this._originalTouchAction = this.container.style.touchAction
+      this.container.style.touchAction = 'none'
+    }
 
     // Attach to container, but we'll find the SVG element in handlers
     Object.entries(this._boundHandlers).forEach(([event, handler]) => {
@@ -48,6 +59,11 @@ export class InteractionManager {
     Object.entries(this._boundHandlers).forEach(([event, handler]) => {
       this.container.removeEventListener(event, handler)
     })
+
+    if (this.container instanceof HTMLElement && this._originalTouchAction !== null) {
+      this.container.style.touchAction = this._originalTouchAction
+      this._originalTouchAction = null
+    }
   }
 
   setCamera(camera) {
@@ -59,13 +75,36 @@ export class InteractionManager {
   }
 
   _onMouseDown(e) {
-    const target = e.target
+    this.activePointerType = 'mouse'
+    this._handlePointerDown({
+      event: e,
+      target: e.target,
+      clientX: e.clientX,
+      clientY: e.clientY
+    })
+  }
+
+  _onTouchStart(e) {
+    if (e.touches.length === 0) return
+    const touch = e.touches[0]
+    this.activePointerType = 'touch'
+    this._handlePointerDown({
+      event: e,
+      target: e.target,
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    })
+  }
+
+  _handlePointerDown({ event, target, clientX, clientY }) {
     if (!target || !target.hasAttribute) return
 
-    this.clickStartX = e.clientX
-    this.clickStartY = e.clientY
-    this.lastX = e.clientX
-    this.lastY = e.clientY
+    this.clickStartX = clientX
+    this.clickStartY = clientY
+    this.lastX = clientX
+    this.lastY = clientY
+
+    let shouldPreventDefault = false
 
     // Check for handle (not origin - handles are always draggable)
     const handleType = target.getAttribute('data-type')
@@ -76,15 +115,16 @@ export class InteractionManager {
         index: parseInt(target.getAttribute('data-index') || '0', 10),
         objectId: target.getAttribute('data-object-id')
       }
-      e.preventDefault()
-      e.stopPropagation()
+      shouldPreventDefault = true
+      if (shouldPreventDefault) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
       return
-    }
-
-    // Check for object (including draggable paths with origin type)
-    if (target.hasAttribute('data-object')) {
+    } else if (target.hasAttribute('data-object')) {
+      // Check for object (including draggable paths with origin type)
       const objectId = target.getAttribute('data-object')
-      
+
       // If it's a draggable path (has data-type='origin'), prepare for drag
       if (handleType === 'origin' && target.hasAttribute('data-object-id')) {
         this.isDragging = true
@@ -94,24 +134,46 @@ export class InteractionManager {
           objectId: objectId
         }
       }
-      
-      // Always select the object when clicking on it
+
+      // Always select the object when interacting with it
       this.onUpdate({
         type: 'select',
         objectId: objectId
       })
-      
-      e.preventDefault()
-      e.stopPropagation()
+
+      shouldPreventDefault = true
+    }
+
+    if (shouldPreventDefault) {
+      event.preventDefault()
+      event.stopPropagation()
     }
   }
 
   _onMouseMove(e) {
+    this._handlePointerMove({
+      event: e,
+      clientX: e.clientX,
+      clientY: e.clientY
+    })
+  }
+
+  _onTouchMove(e) {
+    if (e.touches.length === 0) return
+    const touch = e.touches[0]
+    this._handlePointerMove({
+      event: e,
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    })
+  }
+
+  _handlePointerMove({ event, clientX, clientY }) {
     if (!this.isDragging || !this.dragHandle) return
 
     // Calculate delta from last processed position
-    const dx = e.clientX - this.lastX
-    const dy = e.clientY - this.lastY
+    const dx = clientX - this.lastX
+    const dy = clientY - this.lastY
 
     // No throttling for drag operations - process immediately for smooth dragging
     const svgDelta = this._computeSvgDelta(dx, dy)
@@ -124,15 +186,28 @@ export class InteractionManager {
       delta: worldDelta
     })
 
+    if (this.activePointerType === 'touch') {
+      event.preventDefault()
+    }
+
     // Update last processed position immediately
-    this.lastX = e.clientX
-    this.lastY = e.clientY
+    this.lastX = clientX
+    this.lastY = clientY
   }
 
   _onMouseUp(e) {
+    this._handlePointerUp(e)
+  }
+
+  _onTouchEnd(e) {
+    this._handlePointerUp(e)
+  }
+
+  _handlePointerUp(e) {
     if (this.isDragging) {
       this.isDragging = false
       this.dragHandle = null
+      this.activePointerType = null
 
       this.onUpdate({
         type: 'drag-end'

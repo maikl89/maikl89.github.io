@@ -17,6 +17,7 @@ export class ProjectsPanel {
     projectManager,
     onProjectChange = () => {},
     onUploadProject = () => {},
+    onImportFirebaseConfig = () => {},
     canUpload = false,
     isUploading = false
   } = {}) {
@@ -27,6 +28,7 @@ export class ProjectsPanel {
     this.projectManager = projectManager
     this.onProjectChange = onProjectChange
     this.onUploadProject = onUploadProject
+    this.onImportFirebaseConfig = onImportFirebaseConfig
     this.canUpload = canUpload
     this.isUploading = isUploading
     this.root = null
@@ -124,6 +126,43 @@ export class ProjectsPanel {
     actionsSection.style.flexDirection = 'column'
     actionsSection.style.gap = '0.5rem'
     
+    const firebaseConfigInput = document.createElement('input')
+    firebaseConfigInput.type = 'file'
+    firebaseConfigInput.accept = 'application/json'
+    firebaseConfigInput.style.display = 'none'
+    firebaseConfigInput.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0]
+      if (!file) return
+
+      try {
+        const text = await file.text()
+        const config = JSON.parse(text)
+        const databaseUrl =
+          typeof config.databaseUrl === 'string' ? config.databaseUrl.trim() : ''
+
+        if (!databaseUrl) {
+          window.alert?.('Invalid Firebase config: "databaseUrl" is required.')
+        } else {
+          this.onImportFirebaseConfig({ databaseUrl })
+        }
+      } catch (error) {
+        console.error('Failed to parse Firebase config file', error)
+        window.alert?.(
+          'Failed to read Firebase config. Please provide a valid JSON with "databaseUrl".'
+        )
+      } finally {
+        event.target.value = ''
+      }
+    })
+
+    actionsSection.appendChild(firebaseConfigInput)
+
+    const loadFirebaseBtn = createButton({
+      label: 'Load Firebase Config',
+      variant: 'ghost',
+      onClick: () => firebaseConfigInput.click()
+    })
+
     const newProjectBtn = createButton({
       label: 'New Project',
       variant: 'primary',
@@ -150,6 +189,7 @@ export class ProjectsPanel {
     actionsSection.appendChild(newProjectBtn)
     actionsSection.appendChild(renameBtn)
     actionsSection.appendChild(saveBtn)
+    actionsSection.appendChild(loadFirebaseBtn)
 
     if (this.canUpload) {
       const uploadBtn = createButton({
