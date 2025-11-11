@@ -3,11 +3,13 @@
  */
 
 import { createPanel } from '../components/Panel.js'
+import { createButton } from '../components/Button.js'
 import { degToRad, radToDeg } from '../../utils/math.js'
 
 export class PropertiesPanel {
-  constructor({ onChange = () => {} } = {}) {
+  constructor({ onChange = () => {}, onAddNode = () => {} } = {}) {
     this.onChange = onChange
+    this.onAddNode = onAddNode
     this.root = null
     this.form = null
   }
@@ -92,6 +94,11 @@ export class PropertiesPanel {
       this.form.appendChild(appearanceSection)
       this.form.appendChild(offsetSection)
       this.form.appendChild(rotationSection)
+
+      const nodesSection = this._createNodesSection(object)
+      if (nodesSection) {
+        this.form.appendChild(nodesSection)
+      }
     }
 
     this.root = createPanel({
@@ -175,6 +182,49 @@ export class PropertiesPanel {
     }
 
     fields.filter(Boolean).forEach(field => section.appendChild(field))
+    return section
+  }
+
+  _createNodesSection(object) {
+    if (object.type === 'group' || object.svg_element === 'g') {
+      return null
+    }
+
+    const section = document.createElement('fieldset')
+    section.classList.add('properties-section')
+
+    const legend = document.createElement('legend')
+    legend.textContent = 'Nodes'
+    section.appendChild(legend)
+
+    const info = document.createElement('p')
+    info.style.margin = '0 0 0.75rem 0'
+    info.style.fontSize = '0.8rem'
+    info.style.color = 'var(--text-secondary)'
+
+    const nodeCount = Array.isArray(object.nodes) ? object.nodes.length : 0
+    info.textContent = `${nodeCount} ${nodeCount === 1 ? 'node' : 'nodes'}`
+    section.appendChild(info)
+
+    const controls = document.createElement('div')
+    controls.style.display = 'flex'
+    controls.style.gap = '0.5rem'
+
+    const addBtn = createButton({
+      label: 'Add Node',
+      variant: 'ghost',
+      onClick: (event) => {
+        event.preventDefault()
+        if (typeof this.onAddNode === 'function') {
+          this.onAddNode()
+        }
+      },
+      disabled: typeof this.onAddNode !== 'function'
+    })
+
+    controls.appendChild(addBtn)
+    section.appendChild(controls)
+
     return section
   }
 }

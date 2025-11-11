@@ -22,6 +22,7 @@ import { CollectionPanel } from '../ui/panels/CollectionPanel.js'
 import { ProjectsPanel } from '../ui/panels/ProjectsPanel.js'
 import { PropertiesPanel } from '../ui/panels/PropertiesPanel.js'
 import { TimelinePanel } from '../ui/panels/TimelinePanel.js'
+import { SettingsPanel } from '../ui/panels/SettingsPanel.js'
 import { round } from '../utils/math.js'
 import DEFAULT_CONFIG, { createConfig } from './config.js'
 
@@ -37,6 +38,10 @@ export default class App {
       authToken: firebaseConfig.authToken
     })
     this.isUploadingProject = false
+
+    this.baseControls = JSON.parse(JSON.stringify(DEFAULT_CONFIG.controls || {}))
+    this.controlScale = 1
+    this.config.controls = { ...this.baseControls }
 
     // would be enabled later
     // this.inferenceClient = new InferenceClient({
@@ -65,11 +70,17 @@ export default class App {
     this.horizontalRuler = null
     this.verticalRuler = null
 
+    this.labelPrefixCounters = new Map()
+    this.currentLabelPrefixKey = ''
+
     this.collectionPanel = null
     this.collectionPanelRoot = null
     this.propertiesPanel = null
     this.propertiesPanelRoot = null
+    this.settingsPanel = null
+    this.settingsPanelRoot = null
     this.timelinePanel = null
+    this.stageRoot = null
 
     this.selectedObject = null
 
@@ -79,7 +90,9 @@ export default class App {
       opacity: 0.5,
       visible: false,
       position: { x: 0, y: 0 },
-      scale: 1
+      scale: 1,
+      fileName: null,
+      labelPrefix: ''
     }
 
     this.collectionManager.subscribe(() => {
@@ -135,9 +148,16 @@ export default class App {
     this.collectionPanelRoot = this.collectionPanel.render()
 
     this.propertiesPanel = new PropertiesPanel({
-      onChange: (updates) => this._updateSelectedObject(updates)
+      onChange: (updates) => this._updateSelectedObject(updates),
+      onAddNode: () => this._addNodeToSelectedObject()
     })
     this.propertiesPanelRoot = this.propertiesPanel.render()
+
+    this.settingsPanel = new SettingsPanel({
+      controlScale: this.controlScale,
+      onControlScaleChange: (value) => this._updateControlScale(value)
+    })
+    this.settingsPanelRoot = this.settingsPanel.render()
 
     this.projectsPanel = new ProjectsPanel({
       projectManager: this.projectManager,
@@ -169,11 +189,15 @@ export default class App {
     sidebar.appendChild(this.projectsPanelRoot)
     sidebar.appendChild(this.collectionPanelRoot)
     sidebar.appendChild(this.propertiesPanelRoot)
+    sidebar.appendChild(this.settingsPanelRoot)
     sidebar.appendChild(this._createOverlayImagePanel())
     sidebar.appendChild(this.timelinePanel.render())
 
     const stage = document.createElement('section')
     stage.classList.add('app-stage')
+    stage.style.width = '100%'
+    stage.style.height = '100%'
+    this.stageRoot = stage
 
     // Create ruler container
     const rulerContainer = document.createElement('div')
@@ -222,9 +246,11 @@ export default class App {
 
     this.svgRenderer = new SVGRenderer(svgContainer, {
       width: svgContainer.clientWidth || this.config.stage?.width || 1920,
-      height: svgContainer.clientHeight || this.config.stage?.height || 1080
+      height: svgContainer.clientHeight || this.config.stage?.height || 1080,
+      controls: this.config.controls
     })
     this.svgRenderer.init()
+    this.svgRenderer.setControlsConfig(this.config.controls)
 
     this.canvasRenderer = new CanvasRenderer(svgContainer, {
       width: svgContainer.clientWidth || this.config.stage?.width || 1920,
@@ -287,6 +313,9 @@ export default class App {
       3
     )
 
+    this.stageRoot.style.width = `${width}px`
+    this.stageRoot.style.height = `${height + 20}px` // 20 is rulers height
+
     this.svgRenderer.resize(width, height)
     this.canvasRenderer.resize(width, height)
     this.poseVisualizer.resize(width, height)
@@ -302,11 +331,27 @@ export default class App {
     this.renderScene()
   }
 
+  _generateObjectLabel() {
+    const prefix = (this.overlayImage?.labelPrefix || '').trim()
+    if (!prefix) {
+      return 'New object'
+    }
+
+    const key = prefix.toLowerCase()
+    const next = (this.labelPrefixCounters.get(key) || 0) + 1
+    this.labelPrefixCounters.set(key, next)
+
+    const suffix = String(next).padStart(4, '0')
+    return `${prefix}_${suffix}`
+  }
+
   _createPlaceholderObject() {
+    const label = this._generateObjectLabel()
+    const name = label === 'New object' ? `Object ${Date.now()}` : label
     const obj = {
       type: 'object',
-      name: `Object ${Date.now()}`,
-      label: 'New object',
+      name,
+      label,
       nodes: [
         {
           x: 0,
@@ -501,6 +546,23 @@ export default class App {
     }
   }
 
+  _addNodeToSelectedObject() {
+    if (!this.selectedObject) return
+
+    const result = this.collectionManager.addNode(this.selectedObject.id)
+    if (!result) {
+      window.alert?.('Unable to add node to the selected item.')
+      return
+    }
+
+    const refreshed = this.collectionManager.findInGroups(this.selectedObject.id)
+    if (refreshed) {
+      this._selectObject(refreshed)
+    } else {
+      this.renderScene()
+    }
+  }
+
   _duplicateObject(id) {
     const cloned = this.collectionManager.clone(id)
     if (cloned) {
@@ -566,6 +628,26 @@ export default class App {
     window.alert?.('Firebase configuration updated.')
   }
 
+  _updateControlScale(value) {
+    const scale = Math.min(3, Math.max(0.5, Number(value) || 1))
+    this.controlScale = scale
+
+    const scaledControls = {}
+    const baseControls = this.baseControls || DEFAULT_CONFIG.controls || {}
+    Object.entries(baseControls).forEach(([key, val]) => {
+      if (typeof val === 'number') {
+        scaledControls[key] = Number((val * scale).toFixed(4))
+      } else {
+        scaledControls[key] = val
+      }
+    })
+
+    this.config.controls = scaledControls
+    this.svgRenderer?.setControlsConfig(this.config.controls)
+    this.settingsPanel?.setControlScale(this.controlScale)
+    this.renderScene()
+  }
+
   async _uploadCurrentProject() {
     if (!this.firebaseClient || !this.firebaseClient.isConfigured()) {
       window.alert(
@@ -627,6 +709,97 @@ export default class App {
       variant: 'primary',
       onClick: () => fileInput.click()
     })
+
+    const prefixSection = document.createElement('div')
+    prefixSection.classList.add('properties-field')
+    prefixSection.style.marginTop = '1rem'
+
+    const prefixLabel = document.createElement('label')
+    prefixLabel.textContent = 'Label Prefix'
+    prefixLabel.style.marginBottom = '0.5rem'
+    prefixLabel.style.display = 'block'
+
+    const prefixInput = document.createElement('input')
+    prefixInput.type = 'text'
+    prefixInput.placeholder = 'Auto from file name'
+    prefixInput.value = this.overlayImage.labelPrefix || ''
+    prefixInput.disabled = !this.overlayImage.url
+    prefixInput.addEventListener('input', (event) => {
+      const sanitized = this._setOverlayLabelPrefix(event.target.value, {
+        resetCounter: false
+      })
+      if (sanitized !== event.target.value) {
+        event.target.value = sanitized
+      }
+    })
+
+    const fileInfo = document.createElement('div')
+    fileInfo.style.fontSize = '0.7rem'
+    fileInfo.style.color = 'var(--text-secondary)'
+    fileInfo.style.marginTop = '0.25rem'
+    fileInfo.textContent = this.overlayImage.fileName
+      ? `Loaded file: ${this.overlayImage.fileName}`
+      : 'No reference image loaded'
+
+    prefixSection.appendChild(prefixLabel)
+    prefixSection.appendChild(prefixInput)
+    prefixSection.appendChild(fileInfo)
+
+    const positionSection = document.createElement('div')
+    positionSection.classList.add('properties-field')
+    positionSection.style.marginTop = '1rem'
+
+    const positionLabel = document.createElement('label')
+    positionLabel.textContent = 'Position Offset (px)'
+    positionLabel.style.marginBottom = '0.5rem'
+    positionLabel.style.display = 'block'
+
+    const positionContainer = document.createElement('div')
+    positionContainer.style.display = 'flex'
+    positionContainer.style.gap = '0.5rem'
+
+    const position = this.overlayImage.position || { x: 0, y: 0 }
+    const createPositionField = (axis, labelText) => {
+      const wrapper = document.createElement('div')
+      wrapper.style.display = 'flex'
+      wrapper.style.flexDirection = 'column'
+      wrapper.style.gap = '0.25rem'
+
+      const label = document.createElement('span')
+      label.textContent = labelText
+      label.style.fontSize = '0.7rem'
+      label.style.color = 'var(--text-secondary)'
+
+      const input = document.createElement('input')
+      input.type = 'number'
+      input.step = '1'
+      input.value = String(position[axis] || 0)
+      input.disabled = !this.overlayImage.url
+      input.style.width = '90px'
+      input.addEventListener('change', (event) => {
+        const raw = parseFloat(event.target.value)
+        if (Number.isFinite(raw)) {
+          this._updateOverlayPosition(axis, raw)
+        } else if (event.target.value === '') {
+          return
+        } else {
+          this._updateOverlayPosition(axis, 0)
+        }
+        event.target.value = String(
+          this.overlayImage.position?.[axis] || 0
+        )
+      })
+
+      wrapper.appendChild(label)
+      wrapper.appendChild(input)
+      return wrapper
+    }
+
+    positionContainer.appendChild(createPositionField('x', 'Horizontal (X)'))
+    positionContainer.appendChild(createPositionField('y', 'Vertical (Y)'))
+
+    positionSection.appendChild(positionLabel)
+    positionSection.appendChild(positionContainer)
 
     // Opacity control
     const opacitySection = document.createElement('div')
@@ -699,6 +872,8 @@ export default class App {
 
     container.appendChild(fileInput)
     container.appendChild(uploadBtn)
+    container.appendChild(prefixSection)
+    container.appendChild(positionSection)
     if (this.overlayImage.url) {
       container.appendChild(opacitySection)
     }
@@ -729,9 +904,16 @@ export default class App {
     const reader = new FileReader()
     reader.onload = (e) => {
       const url = e.target.result
+      const fileName = file.name || 'reference'
+      const labelPrefix = this._setOverlayLabelPrefix(fileName, {
+        resetCounter: true
+      })
       this._updateOverlayImage({
         url: url,
-        visible: true
+        visible: true,
+        position: { x: 0, y: 0 },
+        fileName,
+        labelPrefix
       })
       this._refreshOverlayImagePanel()
     }
@@ -741,18 +923,70 @@ export default class App {
     reader.readAsDataURL(file)
   }
 
+  _sanitizeLabelPrefix(value) {
+    if (!value) return ''
+    const withoutExtension = value.replace(/\.[^/.]+$/, '')
+    const sanitized = withoutExtension
+      .trim()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-zA-Z0-9_-]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '')
+    return sanitized
+  }
+
+  _setOverlayLabelPrefix(prefix, { resetCounter = false } = {}) {
+    const sanitized = this._sanitizeLabelPrefix(prefix)
+    const key = sanitized.toLowerCase()
+    const previousKey = this.currentLabelPrefixKey
+    this.overlayImage.labelPrefix = sanitized
+
+    if (sanitized) {
+      if (
+        resetCounter ||
+        key !== previousKey ||
+        !this.labelPrefixCounters.has(key)
+      ) {
+        this.labelPrefixCounters.set(key, 0)
+      }
+      this.currentLabelPrefixKey = key
+    } else {
+      this.currentLabelPrefixKey = ''
+    }
+
+    return sanitized
+  }
+
   _updateOverlayImage(updates) {
     Object.assign(this.overlayImage, updates)
     this._renderOverlayImage()
   }
 
+  _updateOverlayPosition(axis, value) {
+    if (!['x', 'y'].includes(axis)) return
+    const numeric = Number.isFinite(value) ? value : 0
+    const current = this.overlayImage.position || { x: 0, y: 0 }
+    const next = {
+      ...current,
+      [axis]: numeric
+    }
+    this._updateOverlayImage({ position: next })
+  }
+
   _removeOverlayImage() {
+    const previousPrefix = this.overlayImage.labelPrefix
+    if (previousPrefix) {
+      this.labelPrefixCounters.delete(previousPrefix.toLowerCase())
+    }
+    this.currentLabelPrefixKey = ''
     this.overlayImage = {
       url: null,
       opacity: 0.5,
       visible: false,
       position: { x: 0, y: 0 },
-      scale: 1
+      scale: 1,
+      fileName: null,
+      labelPrefix: ''
     }
     this._renderOverlayImage()
     this._refreshOverlayImagePanel()
@@ -765,8 +999,15 @@ export default class App {
       this.imageOverlay.src = this.overlayImage.url
       this.imageOverlay.style.opacity = this.overlayImage.opacity
       this.imageOverlay.style.display = 'block'
+      const position = this.overlayImage.position || { x: 0, y: 0 }
+      const scale = Number.isFinite(this.overlayImage.scale)
+        ? this.overlayImage.scale
+        : 1
+      this.imageOverlay.style.transformOrigin = 'top left'
+      this.imageOverlay.style.transform = `translate(${position.x}px, ${position.y}px) scale(${scale})`
     } else {
       this.imageOverlay.style.display = 'none'
+      this.imageOverlay.style.transform = ''
     }
   }
 

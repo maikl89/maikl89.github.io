@@ -42,7 +42,8 @@ export class TimelinePanel {
 
     return createPanel({
       title: 'Timeline',
-      content: wrapper
+      content: wrapper,
+      className: 'timeline-panel-wrapper'
     })
   }
 }

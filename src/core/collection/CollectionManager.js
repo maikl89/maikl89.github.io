@@ -152,6 +152,33 @@ export class CollectionManager {
   }
 
   /**
+   * Add a new node to an object.
+   * @param {string} objectId - Object ID
+   * @param {object} [node] - Optional node definition
+   * @returns {{node: object, object: object}|null} New node and updated object
+   */
+  addNode(objectId, node = null) {
+    if (!validateId(objectId)) return null
+
+    const target = this.findInGroups(objectId)
+    if (!target) return null
+
+    if (!Array.isArray(target.nodes)) {
+      target.nodes = []
+    }
+
+    const newNode = node && isObject(node)
+      ? JSON.parse(JSON.stringify(node))
+      : this._createDefaultNode(target.nodes[target.nodes.length - 1] || null)
+
+    target.nodes.push(newNode)
+    this.save()
+    this._notify()
+
+    return { node: newNode, object: target }
+  }
+
+  /**
    * Remove object from collection.
    * @param {string} id - Object ID
    * @returns {boolean} True if removed, false if not found
@@ -454,6 +481,34 @@ export class CollectionManager {
     }
     collectGroups(this.objects)
     return groups
+  }
+
+  /**
+   * Create a default node based on previous node.
+   * @param {object|null} referenceNode - Previous node to base offsets on
+   * @returns {object} New node object
+   * @private
+   */
+  _createDefaultNode(referenceNode) {
+    const baseX = referenceNode?.x ?? 0
+    const baseY = referenceNode?.y ?? 0
+
+    const offsetX = 80
+    const offsetY = 0
+    const controlOffset = 40
+
+    return {
+      x: baseX + offsetX,
+      y: baseY + offsetY,
+      start: {
+        x: baseX + offsetX - controlOffset,
+        y: baseY + offsetY - controlOffset
+      },
+      end: {
+        x: baseX + offsetX + controlOffset,
+        y: baseY + offsetY + controlOffset
+      }
+    }
   }
 }
 

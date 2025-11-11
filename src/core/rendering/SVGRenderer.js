@@ -19,6 +19,10 @@ export class SVGRenderer extends RenderEngine {
     this.objectsLayer = null
     this.controlsLayer = null
     this.showControls = true
+    this.controlsConfig =
+      options.controls ||
+      (options.config && options.config.controls) ||
+      DEFAULT_CONFIG.controls
   }
 
   /**
@@ -534,7 +538,7 @@ export class SVGRenderer extends RenderEngine {
   _renderControls(obj, camera = { x: 0, y: 0, z: 200 }, accumulatedTransform = null) {
     // Calculate zoom scale for fixed-size controls
     const zoomScale = this._getZoomScale()
-    const controls = DEFAULT_CONFIG.controls || {}
+    const controls = this.controlsConfig || DEFAULT_CONFIG.controls || {}
     
     // Compensate control sizes based on zoom scale
     const handleRadius = (controls.handleRadius || 4) / zoomScale
@@ -757,6 +761,10 @@ export class SVGRenderer extends RenderEngine {
     return controlsGroup
   }
 
+  setControlsConfig(controls) {
+    this.controlsConfig = controls || DEFAULT_CONFIG.controls
+  }
+
   /**
    * Resize the SVG renderer.
    * @param {number} width - New width (container width, not used for SVG)
@@ -765,7 +773,6 @@ export class SVGRenderer extends RenderEngine {
   resize(width, height) {
     super.resize(width, height)
     if (this.svg) {
-      console.log('resizing SVG to', width, height)
       this.svg.style.width = width
       this.svg.style.height = height
     }

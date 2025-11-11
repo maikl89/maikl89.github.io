@@ -101,6 +101,7 @@ export class Ruler {
    * @private
    */
   _renderHorizontal(width) {
+    console.log(width)
     // Calculate scale based on zoom
     const zoom = this.camera.z || 200
     const scale = 200 / zoom
@@ -143,7 +144,7 @@ export class Ruler {
       // Draw major tick
       const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line')
       tick.setAttribute('x1', screenX)
-      tick.setAttribute('y1', '0')
+      tick.setAttribute('y1', 4)
       tick.setAttribute('x2', screenX)
       tick.setAttribute('y2', this.size)
       tick.setAttribute('stroke', 'var(--text-secondary, rgba(203, 213, 225, 0.75))')
@@ -152,12 +153,12 @@ export class Ruler {
       
       // Draw label
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-      label.setAttribute('x', screenX)
-      label.setAttribute('y', this.size - 4)
+      label.setAttribute('x', screenX + 2)
+      label.setAttribute('y', 8)
       label.setAttribute('fill', 'var(--text-secondary, rgba(203, 213, 225, 0.75))')
-      label.setAttribute('font-size', '9px')
+      label.setAttribute('font-size', '8px')
       label.setAttribute('font-family', 'system-ui, sans-serif')
-      label.setAttribute('text-anchor', 'middle')
+      label.setAttribute('text-anchor', 'start')
       label.textContent = Math.round(value)
       this.element.appendChild(label)
       
@@ -227,7 +228,7 @@ export class Ruler {
       
       // Draw major tick
       const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line')
-      tick.setAttribute('x1', '0')
+      tick.setAttribute('x1', 4)
       tick.setAttribute('y1', screenY)
       tick.setAttribute('x2', this.size)
       tick.setAttribute('y2', screenY)
@@ -237,12 +238,12 @@ export class Ruler {
       
       // Draw label (rotated)
       const label = document.createElementNS('http://www.w3.org/2000/svg', 'text')
-      label.setAttribute('x', this.size - 4)
-      label.setAttribute('y', screenY)
+      label.setAttribute('x', 0)
+      label.setAttribute('y', screenY + 8)
       label.setAttribute('fill', 'var(--text-secondary, rgba(203, 213, 225, 0.75))')
-      label.setAttribute('font-size', '9px')
+      label.setAttribute('font-size', '8px')
       label.setAttribute('font-family', 'system-ui, sans-serif')
-      label.setAttribute('text-anchor', 'end')
+      label.setAttribute('text-anchor', 'start')
       label.setAttribute('dominant-baseline', 'middle')
       label.textContent = Math.round(value)
       this.element.appendChild(label)

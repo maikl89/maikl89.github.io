@@ -431,11 +431,17 @@ body {
   font-size: 0.8rem;
 }
 
+@media (max-width: 768px) {
+  .timeline-panel-wrapper {
+    display: none;
+  }
+}
+
 .app-layout {
   display: flex;
   gap: var(--panel-gap);
-  min-height: calc(100vh - 200px);
-  height: calc(100vh - 200px);
+  min-height: calc(100vh - 20px);
+  height: calc(100vh - 20px);
   align-items: flex-start;
 }
 
@@ -444,13 +450,16 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--panel-gap);
-  padding: 0 0 2.5rem;
+}
+
+.app-sidebar > *:last-child {
+  margin-bottom: 0.5rem;
 }
 
 .app-stage {
   position: relative;
   flex: 1;
-  background: rgba(7, 11, 20, 0.76);
+  background: var(--glass-bg);
   border: 1px solid var(--stage-border);
   border-radius: var(--radius-lg);
   min-height: 500px;
@@ -466,7 +475,8 @@ body {
   left: 20px; /* Account for vertical ruler */
   width: calc(100% - 20px);
   height: calc(100% - 20px);
-  object-fit: contain;
+  object-fit: contain; /* do not use cover */
+  object-position: left top;
   z-index: 0;
   pointer-events: none;
   user-select: none;
@@ -486,7 +496,7 @@ body {
   top: 20px; /* Account for horizontal ruler */
   left: 20px; /* Account for vertical ruler */
   width: calc(100% - 20px);
-  height: calc(100% - 20px);
+  height: 100%;
   z-index: 1;
 }
 
@@ -503,15 +513,7 @@ body {
 /* Ruler styles */
 .ruler {
   background: var(--glass-bg, rgba(13, 18, 28, 0.82));
-  border: 1px solid var(--glass-border, rgba(82, 93, 149, 0.22));
-}
-
-.ruler--horizontal {
-  border-bottom: 1px solid var(--glass-border, rgba(82, 93, 149, 0.22));
-}
-
-.ruler--vertical {
-  border-right: 1px solid var(--glass-border, rgba(82, 93, 149, 0.22));
+  /* bring border become buggy */
 }
 
 /* Handle styles */
