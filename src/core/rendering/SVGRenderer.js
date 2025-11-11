@@ -23,6 +23,11 @@ export class SVGRenderer extends RenderEngine {
       options.controls ||
       (options.config && options.config.controls) ||
       DEFAULT_CONFIG.controls
+    
+    // Zoom state
+    this.zoomLevel = 1.0 // 1.0 = 100%, minimum zoom
+    this.baseViewBoxWidth = this.options.viewBoxWidth || 1920
+    this.baseViewBoxHeight = this.options.viewBoxHeight || 1080
   }
 
   /**
@@ -32,14 +37,12 @@ export class SVGRenderer extends RenderEngine {
     // Create SVG element
     this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
     
-    // Set fixed viewBox using config values from RenderEngine options
-    const viewBoxWidth = this.options.viewBoxWidth
-    const viewBoxHeight = this.options.viewBoxHeight
-    this.svg.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${viewBoxHeight}`)
+    // Set initial viewBox (will be updated by zoom)
+    this._updateViewBox()
     
     // Set fixed pixel dimensions (like original preview)
-    this.svg.setAttribute('width', viewBoxWidth)
-    this.svg.setAttribute('height', viewBoxHeight)
+    this.svg.setAttribute('width', this.baseViewBoxWidth)
+    this.svg.setAttribute('height', this.baseViewBoxHeight)
     
     // Preserve aspect ratio - this makes SVG scale to fit container
     this.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet')
@@ -789,6 +792,98 @@ export class SVGRenderer extends RenderEngine {
 
   setControlsConfig(controls) {
     this.controlsConfig = controls || DEFAULT_CONFIG.controls
+  }
+
+  /**
+   * Update viewBox based on zoom level.
+   * @private
+   */
+  _updateViewBox() {
+    if (!this.svg) return
+    
+    // Calculate new viewBox dimensions (smaller viewBox = zoomed in)
+    const viewBoxWidth = this.baseViewBoxWidth / this.zoomLevel
+    const viewBoxHeight = this.baseViewBoxHeight / this.zoomLevel
+    
+    // Center the viewBox
+    const viewBoxX = (this.baseViewBoxWidth - viewBoxWidth) / 2
+    const viewBoxY = (this.baseViewBoxHeight - viewBoxHeight) / 2
+    
+    this.svg.setAttribute('viewBox', `${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`)
+  }
+
+  /**
+   * Set zoom level (1.0 = 100%, minimum)
+   * @param {number} zoom - Zoom level (>= 1.0)
+   */
+  setZoom(zoom) {
+    this.zoomLevel = Math.max(1.0, zoom)
+    this._updateViewBox()
+    // Trigger re-render if needed
+    if (this.needsRender && this.pendingScene) {
+      this.render(this.pendingScene)
+    }
+  }
+
+  /**
+   * Get current zoom level
+   * @returns {number} Current zoom level
+   */
+  getZoom() {
+    return this.zoomLevel
+  }
+
+  /**
+   * Zoom in by a factor
+   * @param {number} factor - Zoom factor (e.g., 1.5 for 50% zoom in)
+   */
+  zoomIn(factor = 1.5) {
+    this.setZoom(this.zoomLevel * factor)
+  }
+
+  /**
+   * Zoom out to 100% (can't zoom out beyond 100%)
+   */
+  zoomOut() {
+    this.setZoom(1.0)
+  }
+
+  /**
+   * Zoom to a specific point (for pinch-to-zoom)
+   * @param {number} zoom - New zoom level
+   * @param {number} centerX - X coordinate to zoom towards (in viewBox coordinates)
+   * @param {number} centerY - Y coordinate to zoom towards (in viewBox coordinates)
+   */
+  zoomToPoint(zoom, centerX, centerY) {
+    const oldZoom = this.zoomLevel
+    this.zoomLevel = Math.max(1.0, zoom)
+    
+    if (!this.svg || oldZoom === this.zoomLevel) return
+    
+    // Calculate the point in the current viewBox
+    const currentViewBox = this.svg.viewBox?.baseVal
+    if (!currentViewBox) {
+      this._updateViewBox()
+      return
+    }
+    
+    // Calculate the point's position relative to current viewBox
+    const relX = (centerX - currentViewBox.x) / currentViewBox.width
+    const relY = (centerY - currentViewBox.y) / currentViewBox.height
+    
+    // Calculate new viewBox dimensions
+    const newWidth = this.baseViewBoxWidth / this.zoomLevel
+    const newHeight = this.baseViewBoxHeight / this.zoomLevel
+    
+    // Calculate new viewBox position to keep the point at the same relative position
+    const newX = centerX - (relX * newWidth)
+    const newY = centerY - (relY * newHeight)
+    
+    // Clamp to bounds
+    const clampedX = Math.max(0, Math.min(this.baseViewBoxWidth - newWidth, newX))
+    const clampedY = Math.max(0, Math.min(this.baseViewBoxHeight - newHeight, newY))
+    
+    this.svg.setAttribute('viewBox', `${clampedX} ${clampedY} ${newWidth} ${newHeight}`)
   }
 
   /**

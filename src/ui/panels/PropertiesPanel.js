@@ -31,6 +31,9 @@ export class PropertiesPanel {
         }),
         this._createInput('Label', object.label || '', (value) => {
           this.onChange({ label: value })
+        }),
+        this._createCheckbox('Locked', object.locked || false, (value) => {
+          this.onChange({ locked: value })
         })
       ])
 
@@ -168,6 +171,29 @@ export class PropertiesPanel {
 
     wrapper.appendChild(span)
     wrapper.appendChild(controls)
+    return wrapper
+  }
+
+  _createCheckbox(label, value, onChange) {
+    const wrapper = document.createElement('label')
+    wrapper.classList.add('properties-field')
+    wrapper.style.display = 'flex'
+    wrapper.style.alignItems = 'center'
+    wrapper.style.gap = '0.5rem'
+    wrapper.style.cursor = 'pointer'
+
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    checkbox.checked = Boolean(value)
+    checkbox.addEventListener('change', (event) => {
+      onChange(event.target.checked)
+    })
+
+    const span = document.createElement('span')
+    span.textContent = label
+
+    wrapper.appendChild(checkbox)
+    wrapper.appendChild(span)
     return wrapper
   }
 

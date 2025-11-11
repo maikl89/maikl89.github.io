@@ -1,14 +1,19 @@
 import { createPanel } from '../components/Panel.js'
 
 export class SettingsPanel {
-  constructor({ controlScale = 1, onControlScaleChange = () => {} } = {}) {
+  constructor({ controlScale = 1, onControlScaleChange = () => {}, onZoomIn = () => {}, onZoomOut = () => {} } = {}) {
     this.controlScale = this._sanitizeScale(controlScale)
     this.onControlScaleChange = onControlScaleChange
+    this.onZoomIn = onZoomIn
+    this.onZoomOut = onZoomOut
 
     this.root = null
     this.scaleSlider = null
     this.scaleInput = null
     this.scaleLabel = null
+    this.zoomInBtn = null
+    this.zoomOutBtn = null
+    this.zoomLabel = null
   }
 
   render() {
@@ -69,12 +74,97 @@ export class SettingsPanel {
     section.appendChild(controlsRow)
     container.appendChild(section)
 
+    // Zoom controls section
+    const zoomSection = document.createElement('div')
+    zoomSection.classList.add('settings-panel__section')
+    zoomSection.style.display = 'flex'
+    zoomSection.style.flexDirection = 'column'
+    zoomSection.style.gap = '0.5rem'
+    zoomSection.style.marginTop = '1rem'
+
+    const zoomTitle = document.createElement('label')
+    zoomTitle.textContent = 'Zoom'
+    zoomTitle.style.fontSize = '0.75rem'
+    zoomTitle.style.color = 'var(--text-secondary)'
+    zoomTitle.style.display = 'block'
+
+    const zoomControlsRow = document.createElement('div')
+    zoomControlsRow.style.display = 'flex'
+    zoomControlsRow.style.alignItems = 'center'
+    zoomControlsRow.style.gap = '0.5rem'
+
+    this.zoomOutBtn = document.createElement('button')
+    this.zoomOutBtn.textContent = '−'
+    this.zoomOutBtn.style.cssText = `
+      padding: 0.5rem 0.75rem;
+      background: var(--glass-bg, rgba(13, 18, 28, 0.82));
+      border: 1px solid var(--glass-border, rgba(82, 93, 149, 0.22));
+      border-radius: var(--radius-md, 4px);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+      min-width: 36px;
+    `
+    this.zoomOutBtn.addEventListener('click', () => {
+      if (typeof this.onZoomOut === 'function') {
+        this.onZoomOut()
+      }
+    })
+
+    this.zoomLabel = document.createElement('div')
+    this.zoomLabel.style.cssText = `
+      flex: 1;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--text-primary);
+      min-width: 60px;
+    `
+    this.zoomLabel.textContent = '100%'
+
+    this.zoomInBtn = document.createElement('button')
+    this.zoomInBtn.textContent = '+'
+    this.zoomInBtn.style.cssText = `
+      padding: 0.5rem 0.75rem;
+      background: var(--glass-bg, rgba(13, 18, 28, 0.82));
+      border: 1px solid var(--glass-border, rgba(82, 93, 149, 0.22));
+      border-radius: var(--radius-md, 4px);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+      min-width: 36px;
+    `
+    this.zoomInBtn.addEventListener('click', () => {
+      if (typeof this.onZoomIn === 'function') {
+        this.onZoomIn()
+      }
+    })
+
+    zoomControlsRow.appendChild(this.zoomOutBtn)
+    zoomControlsRow.appendChild(this.zoomLabel)
+    zoomControlsRow.appendChild(this.zoomInBtn)
+
+    zoomSection.appendChild(zoomTitle)
+    zoomSection.appendChild(zoomControlsRow)
+    container.appendChild(zoomSection)
+
     this.root = createPanel({
       title: 'Settings',
       content: container
     })
 
     return this.root
+  }
+
+  setZoom(zoom) {
+    if (this.zoomLabel) {
+      this.zoomLabel.textContent = `${Math.round(zoom * 100)}%`
+    }
+    // Update button states
+    if (this.zoomOutBtn) {
+      this.zoomOutBtn.disabled = zoom <= 1.0
+    }
   }
 
   setControlScale(scale) {

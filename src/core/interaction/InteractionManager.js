@@ -11,6 +11,7 @@ export class InteractionManager {
     this.onUpdate = onUpdate
 
     this.isDragging = false
+    this.isPanning = false
     this.activePointerType = null
     this.dragHandle = null // { type: 'origin'|'anchor'|'start'|'end', index: number, objectId: string }
     this.lastX = 0
@@ -20,6 +21,14 @@ export class InteractionManager {
     this.clickStartX = 0
     this.clickStartY = 0
     this.clickThreshold = 5 // pixels - if mouse moves more than this, it's a drag, not a click
+    this.panStartViewBox = null // Store initial viewBox when panning starts
+
+    // Pinch-to-zoom state
+    this.isPinching = false
+    this.initialPinchDistance = 0
+    this.initialZoom = 1.0
+    this.pinchCenterX = 0
+    this.pinchCenterY = 0
 
     this.camera = { x: 0, y: 0, z: 200 }
     this.rotation = { x: 0, y: 0, z: 0 }
@@ -44,7 +53,9 @@ export class InteractionManager {
 
     if (this.container instanceof HTMLElement) {
       this._originalTouchAction = this.container.style.touchAction
-      this.container.style.touchAction = 'none'
+      // Allow panning (scrolling) by default, but we'll preventDefault when dragging handles
+      // 'manipulation' allows panning but disables double-tap zoom
+      this.container.style.touchAction = 'manipulation'
     }
 
     // Attach to container, but we'll find the SVG element in handlers
@@ -86,6 +97,35 @@ export class InteractionManager {
 
   _onTouchStart(e) {
     if (e.touches.length === 0) return
+    
+    // Handle pinch-to-zoom (two fingers)
+    if (e.touches.length === 2) {
+      this.isPinching = true
+      this.isDragging = false // Cancel any drag operation
+      this.dragHandle = null
+      
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      
+      // Calculate initial distance
+      const dx = touch2.clientX - touch1.clientX
+      const dy = touch2.clientY - touch1.clientY
+      this.initialPinchDistance = Math.sqrt(dx * dx + dy * dy)
+      
+      // Calculate center point
+      this.pinchCenterX = (touch1.clientX + touch2.clientX) / 2
+      this.pinchCenterY = (touch1.clientY + touch2.clientY) / 2
+      
+      // Request initial zoom from callback
+      this.onUpdate({
+        type: 'get-initial-zoom'
+      })
+      
+      e.preventDefault()
+      return
+    }
+    
+    // Single touch - handle normally
     const touch = e.touches[0]
     this.activePointerType = 'touch'
     this._handlePointerDown({
@@ -97,7 +137,7 @@ export class InteractionManager {
   }
 
   _handlePointerDown({ event, target, clientX, clientY }) {
-    if (!target || !target.hasAttribute) return
+    if (!target) return
 
     this.clickStartX = clientX
     this.clickStartY = clientY
@@ -107,18 +147,18 @@ export class InteractionManager {
     let shouldPreventDefault = false
 
     // Check for handle (not origin - handles are always draggable)
-    const handleType = target.getAttribute('data-type')
-    if (handleType && handleType !== 'origin' && target.hasAttribute('data-object-id')) {
-      this.isDragging = true
-      this.dragHandle = {
-        type: handleType,
-        index: parseInt(target.getAttribute('data-index') || '0', 10),
-        objectId: target.getAttribute('data-object-id')
-      }
-      // Notify about active handle for visual feedback
+    const handleType = target.getAttribute?.('data-type')
+    if (handleType && handleType !== 'origin' && target.hasAttribute?.('data-object-id')) {
+      const objectId = target.getAttribute('data-object-id')
+      // Request to check if object is locked - App.js will respond
       this.onUpdate({
-        type: 'active-handle',
-        handle: this.dragHandle
+        type: 'pointer-down-on-handle',
+        handleType: handleType,
+        objectId: objectId,
+        index: parseInt(target.getAttribute('data-index') || '0', 10),
+        event: event,
+        clientX: clientX,
+        clientY: clientY
       })
       shouldPreventDefault = true
       if (shouldPreventDefault) {
@@ -126,37 +166,65 @@ export class InteractionManager {
         event.stopPropagation()
       }
       return
-    } else if (target.hasAttribute('data-object')) {
+    } else if (target.hasAttribute && target.hasAttribute('data-object')) {
       // Check for object (including draggable paths with origin type)
       const objectId = target.getAttribute('data-object')
-
-      // If it's a draggable path (has data-type='origin'), prepare for drag
-      if (handleType === 'origin' && target.hasAttribute('data-object-id')) {
-        this.isDragging = true
-        this.dragHandle = {
-          type: 'origin',
-          index: parseInt(target.getAttribute('data-index') || '0', 10),
-          objectId: objectId
-        }
-        // Notify about active handle for visual feedback
-        this.onUpdate({
-          type: 'active-handle',
-          handle: this.dragHandle
-        })
-      }
-
-      // Always select the object when interacting with it
+      
+      // Request to check if object is locked - App.js will handle the decision
       this.onUpdate({
-        type: 'select',
-        objectId: objectId
+        type: 'pointer-down-on-object',
+        objectId: objectId,
+        handleType: handleType,
+        target: target,
+        event: event,
+        clientX: clientX,
+        clientY: clientY
       })
-
+      shouldPreventDefault = true
+      return
+    } else {
+      // Clicked on empty SVG area - start panning
+      this._startPanning(event, clientX, clientY)
       shouldPreventDefault = true
     }
 
     if (shouldPreventDefault) {
       event.preventDefault()
       event.stopPropagation()
+    }
+  }
+
+  _startPanning(event, clientX, clientY) {
+    // Only allow panning if zoomed in (zoom > 1.0)
+    // Check zoom level by comparing viewBox width to base width
+    const svg = this.container?.querySelector('svg')
+    if (svg) {
+      const viewBox = svg.viewBox?.baseVal
+      if (viewBox) {
+        // If viewBox width equals base width (1920), we're at 100% zoom - no panning
+        const baseWidth = 1920
+        const isZoomedIn = viewBox.width < baseWidth
+        
+        if (!isZoomedIn) {
+          // Not zoomed in, don't start panning
+          return
+        }
+
+        this.isPanning = true
+        this.isDragging = false
+        this.dragHandle = null
+
+        this.panStartViewBox = {
+          x: viewBox.x,
+          y: viewBox.y,
+          width: viewBox.width,
+          height: viewBox.height
+        }
+
+        // Store initial pan position
+        this.panStartX = clientX
+        this.panStartY = clientY
+      }
     }
   }
 
@@ -170,15 +238,108 @@ export class InteractionManager {
 
   _onTouchMove(e) {
     if (e.touches.length === 0) return
-    const touch = e.touches[0]
-    this._handlePointerMove({
-      event: e,
-      clientX: touch.clientX,
-      clientY: touch.clientY
-    })
+    
+    // Handle pinch-to-zoom (two fingers)
+    if (e.touches.length === 2 && this.isPinching) {
+      const touch1 = e.touches[0]
+      const touch2 = e.touches[1]
+      
+      // Calculate current distance
+      const dx = touch2.clientX - touch1.clientX
+      const dy = touch2.clientY - touch1.clientY
+      const currentDistance = Math.sqrt(dx * dx + dy * dy)
+      
+      // Calculate zoom factor
+      const scale = currentDistance / this.initialPinchDistance
+      const newZoom = this.initialZoom * scale
+      
+      // Calculate center point in SVG coordinates
+      const svg = this.container?.querySelector('svg')
+      if (svg) {
+        const svgRect = svg.getBoundingClientRect()
+        const viewBox = svg.viewBox?.baseVal
+        if (viewBox) {
+          // Convert screen coordinates to viewBox coordinates
+          const relX = (this.pinchCenterX - svgRect.left) / svgRect.width
+          const relY = (this.pinchCenterY - svgRect.top) / svgRect.height
+          const centerX = viewBox.x + (relX * viewBox.width)
+          const centerY = viewBox.y + (relY * viewBox.height)
+          
+          // Notify about zoom
+          this.onUpdate({
+            type: 'zoom',
+            zoom: newZoom,
+            centerX: centerX,
+            centerY: centerY
+          })
+        }
+      }
+      
+      e.preventDefault()
+      return
+    }
+    
+    // Single touch - handle normally (but not if we were pinching)
+    if (!this.isPinching && e.touches.length === 1) {
+      const touch = e.touches[0]
+      this._handlePointerMove({
+        event: e,
+        clientX: touch.clientX,
+        clientY: touch.clientY
+      })
+    }
   }
 
   _handlePointerMove({ event, clientX, clientY }) {
+    // Handle panning
+    if (this.isPanning && this.panStartViewBox) {
+      const dx = clientX - this.panStartX
+      const dy = clientY - this.panStartY
+
+      // Convert screen delta to viewBox delta
+      const svg = this.container?.querySelector('svg')
+      if (svg) {
+        const svgRect = svg.getBoundingClientRect()
+        const viewBox = svg.viewBox?.baseVal
+        if (viewBox && svgRect.width > 0 && svgRect.height > 0) {
+          // Calculate scale factor
+          const scaleX = viewBox.width / svgRect.width
+          const scaleY = viewBox.height / svgRect.height
+
+          // Calculate new viewBox position
+          const newX = this.panStartViewBox.x - (dx * scaleX)
+          const newY = this.panStartViewBox.y - (dy * scaleY)
+
+          // Clamp to bounds (can't pan beyond base viewBox)
+          // Get base dimensions from SVG renderer if available
+          const baseWidth = 1920 // Base viewBox width
+          const baseHeight = 1080 // Base viewBox height
+          const maxX = Math.max(0, baseWidth - viewBox.width)
+          const maxY = Math.max(0, baseHeight - viewBox.height)
+
+          const clampedX = Math.max(0, Math.min(maxX, newX))
+          const clampedY = Math.max(0, Math.min(maxY, newY))
+
+          // Notify about pan
+          this.onUpdate({
+            type: 'pan',
+            viewBox: {
+              x: clampedX,
+              y: clampedY,
+              width: viewBox.width,
+              height: viewBox.height
+            }
+          })
+        }
+      }
+
+      if (this.activePointerType === 'touch') {
+        event.preventDefault()
+      }
+      return
+    }
+
+    // Handle object/handle dragging
     if (!this.isDragging || !this.dragHandle) return
 
     // Calculate delta from last processed position
@@ -210,6 +371,14 @@ export class InteractionManager {
   }
 
   _onTouchEnd(e) {
+    // Handle pinch end
+    if (this.isPinching && e.touches.length < 2) {
+      this.isPinching = false
+      this.initialPinchDistance = 0
+      this.initialZoom = 1.0
+      return
+    }
+    
     // handle specially for touch events
     if (this.isDragging) {
       // this.isDragging = false
@@ -222,6 +391,13 @@ export class InteractionManager {
   }
 
   _handlePointerUp(e) {
+    if (this.isPanning) {
+      this.isPanning = false
+      this.panStartViewBox = null
+      this.panStartX = 0
+      this.panStartY = 0
+    }
+
     if (this.isDragging) {
       this.isDragging = false
       this.dragHandle = null
@@ -299,8 +475,10 @@ export class InteractionManager {
 
   reset() {
     this.isDragging = false
+    this.isPanning = false
     this.dragHandle = null
     this.activePointerType = null
+    this.panStartViewBox = null
   }
 
   destroy() {

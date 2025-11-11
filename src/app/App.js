@@ -158,7 +158,9 @@ export default class App {
 
     this.settingsPanel = new SettingsPanel({
       controlScale: this.controlScale,
-      onControlScaleChange: (value) => this._updateControlScale(value)
+      onControlScaleChange: (value) => this._updateControlScale(value),
+      onZoomIn: () => this._handleZoomIn(),
+      onZoomOut: () => this._handleZoomOut()
     })
     this.settingsPanelRoot = this.settingsPanel.render()
 
@@ -283,6 +285,9 @@ export default class App {
 
     // Initial render of overlay image if present
     this._renderOverlayImage()
+    
+    // Initialize zoom UI
+    this._updateZoomUI()
   }
 
   _refreshCollectionPanel() {
@@ -654,6 +659,37 @@ export default class App {
     this.renderScene()
   }
 
+  _handleZoomIn() {
+    if (this.svgRenderer) {
+      this.svgRenderer.zoomIn(1.5)
+      this._updateZoomUI()
+      this._updateOverlayImageScale()
+      this.renderScene()
+    }
+  }
+
+  _handleZoomOut() {
+    if (this.svgRenderer) {
+      this.svgRenderer.zoomOut()
+      this._updateZoomUI()
+      this._updateOverlayImageScale()
+      this.renderScene()
+    }
+  }
+
+  _updateZoomUI() {
+    if (this.svgRenderer && this.settingsPanel) {
+      const zoom = this.svgRenderer.getZoom()
+      this.settingsPanel.setZoom(zoom)
+    }
+  }
+
+  _updateOverlayImageScale() {
+    if (!this.svgRenderer || !this.imageOverlay) return
+    // Re-render overlay image with updated zoom scale
+    this._renderOverlayImage()
+  }
+
   async _uploadCurrentProject() {
     if (!this.firebaseClient || !this.firebaseClient.isConfigured()) {
       window.alert(
@@ -1004,9 +1040,10 @@ export default class App {
       this.imageOverlay.style.opacity = this.overlayImage.opacity
       this.imageOverlay.style.display = 'block'
       const position = this.overlayImage.position || { x: 0, y: 0 }
-      const scale = Number.isFinite(this.overlayImage.scale)
-        ? this.overlayImage.scale
-        : 1
+      // Scale should account for zoom level
+      const baseScale = Number.isFinite(this.overlayImage.scale) ? this.overlayImage.scale : 1
+      const zoom = this.svgRenderer?.getZoom() || 1.0
+      const scale = baseScale / zoom // Compensate for zoom
       this.imageOverlay.style.transformOrigin = 'top left'
       this.imageOverlay.style.transform = `translate(${position.x}px, ${position.y}px) scale(${scale})`
     } else {
@@ -1044,10 +1081,94 @@ export default class App {
       return
     }
 
+    if (event.type === 'pointer-down-on-handle') {
+      // Check if object is locked
+      const obj = this.collectionManager.findInGroups(event.objectId)
+      if (obj && obj.locked) {
+        // Object is locked, start panning instead
+        this.interactionManager._startPanning(event.event, event.clientX, event.clientY)
+      } else {
+        // Object not locked, allow handle drag
+        this.interactionManager.isDragging = true
+        this.interactionManager.dragHandle = {
+          type: event.handleType,
+          index: event.index,
+          objectId: event.objectId
+        }
+        // Notify about active handle for visual feedback
+        this.activeHandle = this.interactionManager.dragHandle
+        this.renderScene()
+      }
+      return
+    }
+
+    if (event.type === 'pointer-down-on-object') {
+      // Check if object is locked
+      const obj = this.collectionManager.findInGroups(event.objectId)
+      if (obj && obj.locked) {
+        // Object is locked, start panning instead
+        this.interactionManager._startPanning(event.event, event.clientX, event.clientY)
+        // Still select the object
+        this._selectObject(obj)
+      } else {
+        // Object not locked, handle normally
+        const handleType = event.handleType
+        const target = event.target
+        
+        // If it's a draggable path (has data-type='origin'), prepare for drag
+        if (handleType === 'origin' && target.hasAttribute('data-object-id')) {
+          this.interactionManager.isDragging = true
+          this.interactionManager.dragHandle = {
+            type: 'origin',
+            index: parseInt(target.getAttribute('data-index') || '0', 10),
+            objectId: event.objectId
+          }
+          // Notify about active handle for visual feedback
+          this.activeHandle = this.interactionManager.dragHandle
+          this.renderScene()
+        }
+
+        // Always select the object when interacting with it
+        this._selectObject(obj)
+      }
+      return
+    }
+
+    if (event.type === 'pan') {
+      // Handle pan (viewBox change)
+      if (this.svgRenderer && event.viewBox) {
+        const svg = this.svgRenderer.svg
+        if (svg) {
+          svg.setAttribute('viewBox', `${event.viewBox.x} ${event.viewBox.y} ${event.viewBox.width} ${event.viewBox.height}`)
+          this.renderScene()
+        }
+      }
+      return
+    }
+
     if (event.type === 'active-handle') {
       // Update active handle state for visual feedback
       this.activeHandle = event.handle
       this.renderScene()
+      return
+    }
+
+    if (event.type === 'get-initial-zoom') {
+      // Provide initial zoom for pinch-to-zoom
+      if (this.svgRenderer && this.interactionManager) {
+        this.interactionManager.initialZoom = this.svgRenderer.getZoom()
+      }
+      return
+    }
+
+    if (event.type === 'zoom') {
+      // Handle zoom (from pinch-to-zoom)
+      if (this.svgRenderer && event.zoom && event.centerX !== undefined && event.centerY !== undefined) {
+        this.svgRenderer.zoomToPoint(event.zoom, event.centerX, event.centerY)
+        this._updateZoomUI()
+        this._updateOverlayImageScale()
+        this.renderScene()
+      }
       return
     }
 
