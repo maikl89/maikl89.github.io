@@ -101,14 +101,16 @@ export class Ruler {
    * @private
    */
   _renderHorizontal(width) {
-    // Calculate scale based on zoom
-    const zoom = this.camera.z || 200
-    const scale = 200 / zoom
+    // Calculate scale based on zoom (viewBox width vs base width)
+    const baseWidth = 1920
+    const baseHeight = 1080
+    const zoom = this.camera.z / 200 // Convert camera z to zoom level (200 = 1.0)
+    const scale = 1 / zoom // Scale factor (1.0 = 100% zoom)
     
     // Calculate the visible range in world coordinates
-    // viewBox starts at (0, 0) - top-left origin
-    const viewBoxLeft = (this.viewBox.x || 0) / scale + (this.camera.x || 0)
-    const viewBoxRight = ((this.viewBox.x || 0) + this.viewBox.width) / scale + (this.camera.x || 0)
+    // viewBox x/y represents pan position, width/height represents zoom
+    const viewBoxLeft = (this.viewBox.x || 0) / scale
+    const viewBoxRight = ((this.viewBox.x || 0) + (this.viewBox.width || baseWidth)) / scale
     
     // Determine step size based on zoom level
     let step = 100
@@ -195,14 +197,16 @@ export class Ruler {
    * @private
    */
   _renderVertical(height) {
-    // Calculate scale based on zoom
-    const zoom = this.camera.z || 200
-    const scale = 200 / zoom
+    // Calculate scale based on zoom (viewBox width vs base width)
+    const baseWidth = 1920
+    const baseHeight = 1080
+    const zoom = this.camera.z / 200 // Convert camera z to zoom level (200 = 1.0)
+    const scale = 1 / zoom // Scale factor (1.0 = 100% zoom)
     
     // Calculate the visible range in world coordinates
-    // viewBox starts at (0, 0) - top-left origin
-    const viewBoxTop = (this.viewBox.y || 0) / scale + (this.camera.y || 0)
-    const viewBoxBottom = ((this.viewBox.y || 0) + this.viewBox.height) / scale + (this.camera.y || 0)
+    // viewBox x/y represents pan position, width/height represents zoom
+    const viewBoxTop = (this.viewBox.y || 0) / scale
+    const viewBoxBottom = ((this.viewBox.y || 0) + (this.viewBox.height || baseHeight)) / scale
     
     // Determine step size based on zoom level
     let step = 100

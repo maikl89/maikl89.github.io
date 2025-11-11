@@ -664,6 +664,7 @@ export default class App {
       this.svgRenderer.zoomIn(1.5)
       this._updateZoomUI()
       this._updateOverlayImageScale()
+      this._updateRulers()
       this.renderScene()
     }
   }
@@ -673,6 +674,7 @@ export default class App {
       this.svgRenderer.zoomOut()
       this._updateZoomUI()
       this._updateOverlayImageScale()
+      this._updateRulers()
       this.renderScene()
     }
   }
@@ -688,6 +690,31 @@ export default class App {
     if (!this.svgRenderer || !this.imageOverlay) return
     // Re-render overlay image with updated zoom scale
     this._renderOverlayImage()
+  }
+
+  _updateRulers() {
+    // Update rulers with actual viewBox from SVG (includes pan and zoom)
+    if (this.horizontalRuler && this.verticalRuler && this.svgRenderer?.svg) {
+      const svgViewBox = this.svgRenderer.svg.viewBox?.baseVal
+      if (svgViewBox) {
+        const viewBox = {
+          x: svgViewBox.x,
+          y: svgViewBox.y,
+          width: svgViewBox.width,
+          height: svgViewBox.height
+        }
+        // Get zoom level from renderer
+        const zoom = this.svgRenderer.getZoom()
+        // Create camera-like object for compatibility (z represents zoom level)
+        const cameraState = {
+          x: 0,
+          y: 0,
+          z: zoom * 200 // Convert zoom (1.0 = 100%) to camera z (200 = 100%)
+        }
+        this.horizontalRuler.update(cameraState, viewBox)
+        this.verticalRuler.update(cameraState, viewBox)
+      }
+    }
   }
 
   async _uploadCurrentProject() {
@@ -1085,11 +1112,12 @@ export default class App {
       // Check if object is locked
       const obj = this.collectionManager.findInGroups(event.objectId)
       if (obj && obj.locked) {
-        // Object is locked, start panning instead
+        // Object is locked, start panning instead (only if zoomed in)
         this.interactionManager._startPanning(event.event, event.clientX, event.clientY)
       } else {
-        // Object not locked, allow handle drag
+        // Object not locked, allow handle drag (including origin handles)
         this.interactionManager.isDragging = true
+        this.interactionManager.isPanning = false // Ensure panning is off
         this.interactionManager.dragHandle = {
           type: event.handleType,
           index: event.index,
@@ -1140,7 +1168,8 @@ export default class App {
         const svg = this.svgRenderer.svg
         if (svg) {
           svg.setAttribute('viewBox', `${event.viewBox.x} ${event.viewBox.y} ${event.viewBox.width} ${event.viewBox.height}`)
-          this.renderScene()
+          // Update rulers immediately to follow pan
+          this._updateRulers()
         }
       }
       return
@@ -1167,6 +1196,8 @@ export default class App {
         this.svgRenderer.zoomToPoint(event.zoom, event.centerX, event.centerY)
         this._updateZoomUI()
         this._updateOverlayImageScale()
+        // Update rulers immediately to follow zoom
+        this._updateRulers()
         this.renderScene()
       }
       return
@@ -1299,16 +1330,7 @@ export default class App {
 
     this.svgRenderer.requestRender(scene)
 
-    // Update rulers
-    if (this.horizontalRuler && this.verticalRuler) {
-      const viewBox = {
-        x: 0,
-        y: 0,
-        width: this.config.stage.width,
-        height: this.config.stage.height
-      }
-      this.horizontalRuler.update(this.camera.getState(), viewBox)
-      this.verticalRuler.update(this.camera.getState(), viewBox)
-    }
+    // Update rulers with actual viewBox from SVG (includes pan and zoom)
+    this._updateRulers()
   }
 }

@@ -146,9 +146,9 @@ export class InteractionManager {
 
     let shouldPreventDefault = false
 
-    // Check for handle (not origin - handles are always draggable)
+    // Check for handle (including origin handles)
     const handleType = target.getAttribute?.('data-type')
-    if (handleType && handleType !== 'origin' && target.hasAttribute?.('data-object-id')) {
+    if (handleType && target.hasAttribute?.('data-object-id')) {
       const objectId = target.getAttribute('data-object-id')
       // Request to check if object is locked - App.js will respond
       this.onUpdate({
@@ -168,7 +168,27 @@ export class InteractionManager {
       return
     } else if (target.hasAttribute && target.hasAttribute('data-object')) {
       // Check for object (including draggable paths with origin type)
+      // But skip if it also has data-object-id (should have been caught above)
+      // This handles objects that are draggable but don't have data-object-id
       const objectId = target.getAttribute('data-object')
+      
+      // If it has data-type='origin' and data-object-id, it should have been caught above
+      // This is a fallback for objects without data-object-id
+      if (handleType === 'origin' && target.hasAttribute('data-object-id')) {
+        // Should have been caught above, but just in case, handle it here too
+        const objId = target.getAttribute('data-object-id')
+        this.onUpdate({
+          type: 'pointer-down-on-handle',
+          handleType: 'origin',
+          objectId: objId,
+          index: parseInt(target.getAttribute('data-index') || '0', 10),
+          event: event,
+          clientX: clientX,
+          clientY: clientY
+        })
+        shouldPreventDefault = true
+        return
+      }
       
       // Request to check if object is locked - App.js will handle the decision
       this.onUpdate({
@@ -280,7 +300,8 @@ export class InteractionManager {
     }
     
     // Single touch - handle normally (but not if we were pinching)
-    if (!this.isPinching && e.touches.length === 1) {
+    // Don't handle move if we're panning (let panning handle it)
+    if (!this.isPinching && !this.isPanning && e.touches.length === 1) {
       const touch = e.touches[0]
       this._handlePointerMove({
         event: e,
@@ -291,7 +312,34 @@ export class InteractionManager {
   }
 
   _handlePointerMove({ event, clientX, clientY }) {
-    // Handle panning
+    // Don't pan if we're dragging a handle
+    if (this.isDragging && this.dragHandle) {
+      // Handle object/handle dragging first
+      const dx = clientX - this.lastX
+      const dy = clientY - this.lastY
+
+      // No throttling for drag operations - process immediately for smooth dragging
+      const svgDelta = this._computeSvgDelta(dx, dy)
+      // Convert SVG coordinates to world coordinates (accounting for camera scale)
+      const worldDelta = this._toWorldDelta(svgDelta.dx, svgDelta.dy)
+
+      this.onUpdate({
+        type: 'drag',
+        handle: this.dragHandle,
+        delta: worldDelta
+      })
+
+      if (this.activePointerType === 'touch') {
+        event.preventDefault()
+      }
+
+      // Update last processed position immediately
+      this.lastX = clientX
+      this.lastY = clientY
+      return
+    }
+
+    // Handle panning (only if not dragging)
     if (this.isPanning && this.panStartViewBox) {
       const dx = clientX - this.panStartX
       const dy = clientY - this.panStartY
@@ -338,32 +386,6 @@ export class InteractionManager {
       }
       return
     }
-
-    // Handle object/handle dragging
-    if (!this.isDragging || !this.dragHandle) return
-
-    // Calculate delta from last processed position
-    const dx = clientX - this.lastX
-    const dy = clientY - this.lastY
-
-    // No throttling for drag operations - process immediately for smooth dragging
-    const svgDelta = this._computeSvgDelta(dx, dy)
-    // Convert SVG coordinates to world coordinates (accounting for camera scale)
-    const worldDelta = this._toWorldDelta(svgDelta.dx, svgDelta.dy)
-
-    this.onUpdate({
-      type: 'drag',
-      handle: this.dragHandle,
-      delta: worldDelta
-    })
-
-    if (this.activePointerType === 'touch') {
-      event.preventDefault()
-    }
-
-    // Update last processed position immediately
-    this.lastX = clientX
-    this.lastY = clientY
   }
 
   _onMouseUp(e) {
