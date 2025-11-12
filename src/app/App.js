@@ -1145,6 +1145,8 @@ export default class App {
         
         // If it's a draggable path (has data-type='origin'), prepare for drag
         if (handleType === 'origin' && target.hasAttribute('data-object-id')) {
+          // Reset panning state when starting to drag
+          this.interactionManager.isPanning = false
           this.interactionManager.isDragging = true
           this.interactionManager.dragHandle = {
             type: 'origin',
@@ -1183,9 +1185,24 @@ export default class App {
     }
 
     if (event.type === 'get-initial-zoom') {
-      // Provide initial zoom for pinch-to-zoom
+      // Provide initial zoom for pinch-to-zoom and wheel zoom
       if (this.svgRenderer && this.interactionManager) {
         this.interactionManager.initialZoom = this.svgRenderer.getZoom()
+      }
+      return
+    }
+
+    if (event.type === 'wheel-zoom') {
+      // Handle mouse wheel zoom
+      if (this.svgRenderer && event.delta !== undefined && event.centerX !== undefined && event.centerY !== undefined) {
+        const currentZoom = this.svgRenderer.getZoom()
+        const newZoom = Math.max(1.0, currentZoom + event.delta) // Minimum zoom is 1.0 (100%)
+        this.svgRenderer.zoomToPoint(newZoom, event.centerX, event.centerY)
+        this._updateZoomUI()
+        this._updateOverlayImageScale()
+        // Update rulers immediately to follow zoom
+        this._updateRulers()
+        this.renderScene()
       }
       return
     }
@@ -1193,7 +1210,9 @@ export default class App {
     if (event.type === 'zoom') {
       // Handle zoom (from pinch-to-zoom)
       if (this.svgRenderer && event.zoom && event.centerX !== undefined && event.centerY !== undefined) {
-        this.svgRenderer.zoomToPoint(event.zoom, event.centerX, event.centerY)
+        // Ensure minimum zoom of 1.0 (100%)
+        const clampedZoom = Math.max(1.0, event.zoom)
+        this.svgRenderer.zoomToPoint(clampedZoom, event.centerX, event.centerY)
         this._updateZoomUI()
         this._updateOverlayImageScale()
         // Update rulers immediately to follow zoom
