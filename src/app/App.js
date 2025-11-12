@@ -1125,7 +1125,7 @@ export default class App {
         }
         // Notify about active handle for visual feedback
         this.activeHandle = this.interactionManager.dragHandle
-        this.renderScene()
+        this._selectObject(obj)
       }
       return
     }
